@@ -20,7 +20,7 @@ Falta:
 const aegis::snowflake meedev           = 280450898885607425;
 
 const std::string default_cmd           = u8"lsw/sl";
-const std::string version_app           = u8"V1.0.1";
+const std::string version_app           = u8"V1.0.2";
 
 const auto emoji_yes                    = u8"✅";
 //const std::string emoji_no              = easy_simple_emoji(u8"❎");
@@ -425,7 +425,7 @@ int main(int argc, char* argv[])
 
                 // points
 
-                if (global_chats.points_can(channel, who)) {
+                if (global_chats.points_can(guild, who)) {
 
                     int boost_final = 0;
                     bool had_boost = (random.random() % range_boost_chances == 0) || global_users.get(who) == 0;

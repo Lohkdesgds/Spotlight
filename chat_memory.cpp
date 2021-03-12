@@ -1,12 +1,12 @@
 #include "chat_memory.h"
 
-ChatTrigger::ChatTrigger(const aegis::snowflake& chid)
+GuildTrigger::GuildTrigger(const aegis::snowflake& chid)
 {
-	chatid = chid;
+	guildid = chid;
 	last_message = std::chrono::system_clock::now();
 }
 
-bool ChatTrigger::check_point_can_get(const aegis::snowflake& uid)
+bool GuildTrigger::check_point_can_get(const aegis::snowflake& uid)
 {
 	std::lock_guard<std::mutex> l(m);
 
