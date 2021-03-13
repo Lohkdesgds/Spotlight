@@ -13,7 +13,8 @@ struct GuildConf {
 	std::mutex m;
 	// role, pts
 	std::vector<std::pair<unsigned long long, unsigned long long>> points_to_role;
-	unsigned long long chat_registry{};
+	std::string alias;
+	unsigned long long chat_registry{}, chat_commands{};
 
 	nlohmann::json save() const;
 	void load(const nlohmann::json&);
@@ -25,6 +26,8 @@ class ControlGuilds {
 
 	bool save_nolock(const aegis::snowflake&, const GuildConf&);
 	GuildConf load_nolock(const aegis::snowflake&);
+
+	void flush_nolock(const aegis::snowflake&);
 public:
 	GuildConf& grab_guild(const aegis::snowflake&);
 
@@ -48,8 +51,16 @@ public:
 	unsigned long long get_registry_chat(const aegis::snowflake&);
 	// set registry chat
 	void set_registry_chat(const aegis::snowflake&, const unsigned long long);
+	// copy to this if any
+	unsigned long long get_command_chat(const aegis::snowflake&);
+	// set registry chat
+	void set_command_chat(const aegis::snowflake&, const unsigned long long);
+	// get alias
+	std::string get_alias(const aegis::snowflake&);
+	// set alias
+	void set_alias(const aegis::snowflake&, const std::string&);
+
 	
-	void flush(const aegis::snowflake&);
 };
 
 inline ControlGuilds global_guilds;

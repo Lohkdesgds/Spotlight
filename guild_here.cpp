@@ -6,12 +6,16 @@ GuildConf::GuildConf(GuildConf&& c)
 
 	points_to_role = std::move(c.points_to_role);
 	chat_registry = c.chat_registry;
+	alias = c.alias;
+	chat_commands = c.chat_commands;
 }
 
 void GuildConf::start(const GuildConf& c)
 {
 	points_to_role = c.points_to_role;
 	chat_registry = c.chat_registry;
+	alias = c.alias;
+	chat_commands = c.chat_commands;
 }
 
 nlohmann::json GuildConf::save() const
@@ -24,6 +28,8 @@ nlohmann::json GuildConf::save() const
 		j["rules"].push_back(i);
 
 	j["registry"] = chat_registry;
+	j["alias"] = alias;
+	j["chat_commands"] = chat_commands;
 
 	return j;
 }
@@ -37,7 +43,9 @@ void GuildConf::load(const nlohmann::json& j)
 			points_to_role.push_back(_field.get<std::pair<unsigned long long, unsigned long long>>());
 	}
 
-	if (j.count("registry") && !j["registry"].is_null()) chat_registry = j["registry"];
+	if (j.count("registry") && !j["registry"].is_null())			chat_registry = j["registry"];
+	if (j.count("alias") && !j["alias"].is_null())					alias = j["alias"];
+	if (j.count("chat_commands") && !j["chat_commands"].is_null())	chat_commands = j["chat_commands"];
 }
 
 
@@ -94,6 +102,17 @@ GuildConf ControlGuilds::load_nolock(const aegis::snowflake& gid)
 	return std::move(gg);
 }
 
+
+void ControlGuilds::flush_nolock(const aegis::snowflake& guild)
+{
+	if (!guild) throw std::exception("invalid guild!");
+	std::lock_guard<std::mutex> l(access_guilds);
+
+	auto a = known_guilds.find(guild);
+	if (a != known_guilds.end()) {
+		save_nolock(guild, a->second);
+	}
+}
 
 GuildConf& ControlGuilds::grab_guild(const aegis::snowflake& guild)
 {
@@ -196,7 +215,7 @@ void ControlGuilds::reg_add(const aegis::snowflake& guild, const unsigned long l
 		return left.second < right.second;
 	});*/
 
-	flush(guild);
+	flush_nolock(guild);
 }
 
 void ControlGuilds::reg_remove(const aegis::snowflake& guild, const unsigned long long role)
@@ -208,7 +227,7 @@ void ControlGuilds::reg_remove(const aegis::snowflake& guild, const unsigned lon
 	{
 		if (wrk.points_to_role[p].first == role) {
 			wrk.points_to_role.erase(wrk.points_to_role.begin() + p);
-			flush(guild);
+			flush_nolock(guild);
 			return;
 		}
 	}
@@ -220,7 +239,7 @@ void ControlGuilds::reg_remove_all(const aegis::snowflake& guild)
 	std::lock_guard<std::mutex> l(wrk.m);
 
 	wrk.points_to_role.clear();
-	flush(guild);
+	flush_nolock(guild);
 }
 
 std::string ControlGuilds::list(const aegis::snowflake& guild)
@@ -250,16 +269,33 @@ void ControlGuilds::set_registry_chat(const aegis::snowflake& guild, const unsig
 	auto& wrk = grab_guild(guild);
 	std::lock_guard<std::mutex> l(wrk.m);
 	wrk.chat_registry = chatid;
-	flush(guild);
+	flush_nolock(guild);
 }
 
-void ControlGuilds::flush(const aegis::snowflake& guild)
+unsigned long long ControlGuilds::get_command_chat(const aegis::snowflake& guild)
 {
-	if (!guild) throw std::exception("invalid guild!");
-	std::lock_guard<std::mutex> l(access_guilds);
+	return grab_guild(guild).chat_commands;
+}
 
-	auto a = known_guilds.find(guild);
-	if (a != known_guilds.end()) {
-		save_nolock(guild, a->second);
-	}
+void ControlGuilds::set_command_chat(const aegis::snowflake& guild, const unsigned long long chatid)
+{
+	auto& wrk = grab_guild(guild);
+	std::lock_guard<std::mutex> l(wrk.m);
+	wrk.chat_commands = chatid;
+	flush_nolock(guild);
+}
+
+std::string ControlGuilds::get_alias(const aegis::snowflake& guild)
+{
+	auto& wrk = grab_guild(guild);
+	std::lock_guard<std::mutex> l(wrk.m);
+	return wrk.alias;
+}
+
+void ControlGuilds::set_alias(const aegis::snowflake& guild, const std::string& newalias)
+{
+	auto& wrk = grab_guild(guild);
+	std::lock_guard<std::mutex> l(wrk.m);
+	wrk.alias = newalias;
+	flush_nolock(guild);
 }

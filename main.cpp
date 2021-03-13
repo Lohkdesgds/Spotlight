@@ -13,14 +13,13 @@ bool up = true;
 
 /*
 Falta:
-- verificar roles
-- chat config (in memory) de qual foi a última vez que alguém falou no chat X e quem foi
+- futuramente trade, loja.
 */
 
 const aegis::snowflake meedev           = 280450898885607425;
 
 const std::string default_cmd           = u8"lsw/sl";
-const std::string version_app           = u8"V1.0.2";
+const std::string version_app           = u8"V1.0.3";
 
 const auto emoji_yes                    = u8"✅";
 //const std::string emoji_no              = easy_simple_emoji(u8"❎");
@@ -37,18 +36,21 @@ const unsigned range_boost_chances = 42; // one in 42
 
 const std::string generic_help =
     u8"`" + default_cmd + u8" ?`: mostra isso\n" // done
-    u8"`" + default_cmd + u8" help`: mostra isso\n" // done
-    u8"`" + default_cmd + u8" ajuda`: mostra isso\n" // done
+    u8"`" + default_cmd + u8" help`: mesmo que `?`\n" // done
+    u8"`" + default_cmd + u8" ajuda`: mesmo que `?`\n" // done
     u8"`" + default_cmd + u8" upgrade <vezes>`: tenta comprar o(s) próximo(s) cargos registrado nesse grupo (gasta pontos globais, máximo 10 de uma vez)\n" // done
+    u8"`" + default_cmd + u8" evoluir <vezes>`: mesmo que `upgrade`\n" // done
     u8"`" + default_cmd + u8" info`: mostra informações sobre este grupo e dados seus.\n\n" // done
-    u8"*ESTE BOT ESTÁ EM BETA. Se você acha que tem algum bug, por favor, reporte a um admin.*\n"; // done
+    u8"*ESTE BOT ESTÁ EM EARLY ACCESS. Se você acha que tem algum bug, por favor, reporte a um admin.*\n"; // done
 
 const std::string admin_help = u8"**Comandos de admin:**\n"
+    u8"`" + default_cmd + u8" alias <string>`: definir uma forma alternativa de chamar o bot\n" // done
     u8"`" + default_cmd + u8" reg <num> <id>`: registrar que o usuário pode comprar um cargo `<id>` com uma quantidade de pontos\n" // done
     u8"`" + default_cmd + u8" unreg <id|*>`: tirar configuração de compra de cargo `<id>` ou todos de uma vez com `*`\n" // done
     u8"`" + default_cmd + u8" list`: lista na ordem que o usuário deve obter (na ordem que foi adicionado) os cargos e o custo em pontos\n" // done
     u8"`" + default_cmd + u8" retry <id>`: tenta aplicar todos os cargos que o usuário com ID `<id>` devia ter no grupo.\n" // done
-    u8"`" + default_cmd + u8" log <id>`: faz uma cópia vitalícia dos pontos que as pessoas ganharam no seu grupo aqui.\n"
+    u8"`" + default_cmd + u8" log <id>`: faz uma cópia vitalícia dos pontos que as pessoas ganharam no seu grupo neste chat. 0 desativa.\n"
+    u8"`" + default_cmd + u8" commandchat <id>`: define um chat exclusivo para comandos. Admins podem ainda usar comando de qualquer lugar.\n"
     u8"\n**Comandos gerais:**\n"; // done
 
 // EMBED STUFF
@@ -100,7 +102,25 @@ int main(int argc, char* argv[])
 
 
             aegis::guild* guild_a = bot.find_guild(guild);
-            if (guild_a && content.find(default_cmd) == 0) {
+            if (!guild_a) {
+                bot.log->error("Cannot find guild {}? Creating guild...", guild);
+                guild_a = bot.guild_create(guild, _shard);
+                if (!guild_a) {
+                    bot.log->error("Still no guild {}! Abort.", guild);
+                    return;
+                }
+            }
+
+            const std::string current_alias = global_guilds.get_alias(guild);
+            bool accumulative = true;
+            bool was_command_alias = false;
+            const bool is_admin = guild_a->get_owner() == who || who == meedev;
+
+            accumulative &= (global_guilds.get_command_chat(guild) == 0 || (channel == global_guilds.get_command_chat(guild))); // valid chat id
+            accumulative |= (guild_a->get_owner() == who || who == meedev); // if me or owner, do it anyway
+            accumulative &= (content.find(default_cmd) == 0 || (was_command_alias |= (current_alias.length() && content.find(current_alias) == 0))); // has command
+
+            if (accumulative) {
 
                 ch_a->get_message(message).then<void>(
                     [&](aegis::gateway::objects::message m) {
@@ -108,10 +128,10 @@ int main(int argc, char* argv[])
                     }
                 );
 
-                const auto argg = content.substr(default_cmd.length());
-                const bool is_god = guild_a->get_owner() == who || who == meedev;
+                std::string argg = content.substr(was_command_alias ? global_guilds.get_alias(guild).length() : default_cmd.length());
+                if (argg.find(' ') == 0) argg.erase(argg.begin()); // remove " " like lsw/sl<empty space>command or '+' as command then +upgrade
 
-                if (argg.find(" restart") == 0 && who == meedev)
+                if (argg.find("restart") == 0 && who == meedev)
                 {
                     ch_a->create_reaction(message, emoji_yes, false);
                     bot.update_presence(default_cmd + " - restarting...", aegis::gateway::objects::activity::Game, aegis::gateway::objects::presence::Idle);
@@ -122,16 +142,19 @@ int main(int argc, char* argv[])
                     bot.shutdown();
                     return;
                 }
-                else if (argg.find(" forceset") == 0 && who == meedev)
+                else if (argg.find("forceset") == 0 && who == meedev)
                 {
                     unsigned long long userid{}, npts{};
 
-                    if (sscanf_s(argg.c_str(), " forceset %llu %llu", &userid, &npts) == 2)
+                    if (sscanf_s(argg.c_str(), "forceset %llu %llu", &userid, &npts) == 2)
                     {
                         auto& usr = global_users.grab_user(userid);
-                        std::lock_guard<std::mutex> l(usr.m);
 
-                        usr.pts = npts;
+                        {
+                            std::lock_guard<std::mutex> l(usr.m);
+                            usr.pts = npts;
+                        }
+
                         global_users.flush(userid);
 
                         ch_a->create_message(
@@ -153,7 +176,7 @@ int main(int argc, char* argv[])
                     }
 
                 }
-                else if (is_god && argg.find(" status") == 0)
+                else if (is_admin && argg.find("status") == 0)
                 {
                     std::string resume = u8"**About:**\n```md\n";
                     resume += "- Delayed tasks amount: " + std::to_string(tasker.delayed_tasks_size()) + " tasks\n";
@@ -172,11 +195,36 @@ int main(int argc, char* argv[])
                         }
                     );
                 }
-                else if (is_god && argg.find(" reg") == 0) // reg <num> <id>
+                else if (is_admin && argg.find("alias ") == 0) // reg <num> <id>
+                {
+                    std::string aliasf = argg.substr(sizeof("alias")); // "alias" has \0 in the end, so size is 1 more, perfect for "alias something"
+                    if (!aliasf.empty()) {
+
+                        global_guilds.set_alias(guild, aliasf);
+
+                        ch_a->create_message(
+                            u8"Registrado forma alternativa como `" + aliasf + u8"`."
+                        ).then<void>(
+                            [&](aegis::gateway::objects::message m) {
+                                tasker.delay(30000, [m = std::move(m)]() mutable { m.delete_message(); });
+                            }
+                        );
+                    }
+                    else {
+                        ch_a->create_message(
+                            u8"Não pude ler com sucesso a string. Por acaso você seguiu mesmo o formato `" + default_cmd + u8" alias <string>` como por exemplo `" + default_cmd + u8" alias +`?"
+                        ).then<void>(
+                            [&](aegis::gateway::objects::message m) {
+                                tasker.delay(30000, [m = std::move(m)]() mutable { m.delete_message(); });
+                            }
+                        );
+                    }
+                }
+                else if (is_admin && argg.find("reg") == 0) // reg <num> <id>
                 {
                     unsigned long long pts{}, role{};
 
-                    if (sscanf_s(argg.c_str(), " reg %llu %llu", &pts, &role) == 2) {
+                    if (sscanf_s(argg.c_str(), "reg %llu %llu", &pts, &role) == 2) {
 
                         global_guilds.reg_add(guild, role, pts);
 
@@ -198,7 +246,7 @@ int main(int argc, char* argv[])
                         );
                     }
                 }
-                else if (is_god && argg.find(" list") == 0)
+                else if (is_admin && argg.find("list") == 0)
                 {
                     const std::string res = global_guilds.list(guild);
 
@@ -210,11 +258,11 @@ int main(int argc, char* argv[])
                         }
                     );
                 }
-                else if (is_god && argg.find(" unreg") == 0)
+                else if (is_admin && argg.find("unreg") == 0)
                 {
                     unsigned long long role{};
 
-                    if (argg.find(" unreg *") == 0) {
+                    if (argg.find("unreg *") == 0) {
 
                         global_guilds.reg_remove_all(guild);
 
@@ -226,7 +274,7 @@ int main(int argc, char* argv[])
                             }
                         );
                     }
-                    else if (sscanf_s(argg.c_str(), " unreg %llu", &role) == 1) {
+                    else if (sscanf_s(argg.c_str(), "unreg %llu", &role) == 1) {
 
                         global_guilds.reg_remove(guild, role);
 
@@ -248,11 +296,11 @@ int main(int argc, char* argv[])
                         );
                     }
                 }
-                else if (is_god && argg.find(" retry") == 0)
+                else if (is_admin && argg.find("retry") == 0)
                 {
                     unsigned long long usrid{};
 
-                    if (sscanf_s(argg.c_str(), " retry %llu", &usrid) == 1) {
+                    if (sscanf_s(argg.c_str(), "retry %llu", &usrid) == 1) {
 
                         global_guilds.reapply_user_on_guild(*guild_a, guild, usrid, global_users.grab_user(usrid));
 
@@ -274,10 +322,10 @@ int main(int argc, char* argv[])
                         );
                     }
                 }
-                else if (is_god && argg.find(" log") == 0)
+                else if (is_admin && argg.find("log") == 0)
                 {
                     unsigned long long chatid{};
-                    if (sscanf_s(argg.c_str(), " log %llu", &chatid) == 1) {
+                    if (sscanf_s(argg.c_str(), "log %llu", &chatid) == 1) {
 
                         global_guilds.set_registry_chat(guild, chatid);
 
@@ -301,7 +349,34 @@ int main(int argc, char* argv[])
                         );
                     }
                 }
-                else if (argg.find(" info") == 0)
+                else if (is_admin && argg.find("commandchat") == 0)
+                {
+                    unsigned long long chatid{};
+                    if (sscanf_s(argg.c_str(), "commandchat %llu", &chatid) == 1) {
+
+                        global_guilds.set_command_chat(guild, chatid);
+
+                        ch_a->create_message(
+                            chatid ? 
+                            u8"Você definiu o chat de comandos para <#" + std::to_string(chatid) + u8">." :
+                            u8"Você desativou o chat de comandos exclusivo."
+                        ).then<void>(
+                            [&](aegis::gateway::objects::message m) {
+                                tasker.delay(30000, [m = std::move(m)]() mutable { m.delete_message(); });
+                            }
+                        );
+                    }
+                    else {
+                        ch_a->create_message(
+                            u8"Não pude ler com sucesso o número. Por acaso você seguiu mesmo o formato `" + default_cmd + u8" commandchat <id>` como por exemplo `" + default_cmd + u8" commandchat 123456789012345678`?"
+                        ).then<void>(
+                            [&](aegis::gateway::objects::message m) {
+                                tasker.delay(30000, [m = std::move(m)]() mutable { m.delete_message(); });
+                            }
+                        );
+                    }
+                }
+                else if (argg.find("info") == 0)
                 {
                     //const std::string res = global_guilds.list(guild);
                     const auto& user = global_users.grab_user(who);
@@ -340,8 +415,9 @@ int main(int argc, char* argv[])
                         }
                     );
                 }
-                else if (argg.find(" upgrade") == 0)
+                else if (argg.find("upgrade") == 0 || argg.find("evoluir") == 0)
                 {
+                    const std::string real_trigger = (argg.find("upgrade") == 0) ? "upgrade" : "evoluir"; // i know they both has same len, but later on this will be used with other stuff
                     std::string message_buf;
 
                     auto try_upgrade_someone = [&](const unsigned long long whoever) {
@@ -378,7 +454,7 @@ int main(int argc, char* argv[])
 
                     unsigned amount_of_upgrade_tries = 0;
 
-                    if (sscanf_s(argg.c_str(), " upgrade %u", &amount_of_upgrade_tries) != 1) amount_of_upgrade_tries = 1;
+                    if (sscanf_s(argg.c_str(), (real_trigger + " %u").c_str(), &amount_of_upgrade_tries) != 1) amount_of_upgrade_tries = 1;
                     if (amount_of_upgrade_tries > 10) amount_of_upgrade_tries = 10;
 
                     for (unsigned p = 0; p < amount_of_upgrade_tries; p++) {
@@ -412,7 +488,7 @@ int main(int argc, char* argv[])
                 else
                 {
                     ch_a->create_message(
-                        (is_god ? admin_help : "") + generic_help
+                        (is_admin ? admin_help : "") + generic_help
                     ).then<void>(
                         [&](aegis::gateway::objects::message m) {
                             tasker.delay(30000, [m = std::move(m)]() mutable { m.delete_message(); });

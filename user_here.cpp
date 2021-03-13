@@ -91,6 +91,17 @@ UserConf ControlUsers::load_nolock(const aegis::snowflake& gid)
 	return std::move(gg);
 }
 
+void ControlUsers::flush_nolock(const aegis::snowflake& user)
+{
+	if (!user) throw std::exception("invalid user!");
+	std::lock_guard<std::mutex> l(access_guilds);
+
+	auto a = known_users.find(user);
+	if (a != known_users.end()) {
+		save_nolock(user, a->second);
+	}
+}
+
 UserConf& ControlUsers::grab_user(const aegis::snowflake& user)
 {
 	if (!user) throw std::exception("invalid user!");
@@ -120,21 +131,16 @@ void ControlUsers::add(const aegis::snowflake& user, const long long delta)
 	if (delta < 0 && usr.pts <= static_cast<unsigned long long>(-delta)) usr.pts = 1;
 	else usr.pts += delta;
 
-	flush(user);
+	flush_nolock(user);
+}
+
+void ControlUsers::flush(const aegis::snowflake& user)
+{
+	std::lock_guard<std::mutex> l(grab_user(user).m);
+	flush_nolock(user);
 }
 
 size_t ControlUsers::users_known_size() const
 {
 	return known_users.size();
-}
-
-void ControlUsers::flush(const aegis::snowflake& user)
-{
-	if (!user) throw std::exception("invalid user!");
-	std::lock_guard<std::mutex> l(access_guilds);
-
-	auto a = known_users.find(user);
-	if (a != known_users.end()) {
-		save_nolock(user, a->second);
-	}
 }

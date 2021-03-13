@@ -22,15 +22,18 @@ class ControlUsers {
 
 	bool save_nolock(const aegis::snowflake&, const UserConf&);
 	UserConf load_nolock(const aegis::snowflake&);
+
+	void flush_nolock(const aegis::snowflake&);
 public:
 	UserConf& grab_user(const aegis::snowflake&);
 
 	unsigned long long get(const aegis::snowflake&);
 	void add(const aegis::snowflake&, const long long);
 
-	size_t users_known_size() const;
-
+	// locks
 	void flush(const aegis::snowflake&);
+
+	size_t users_known_size() const;
 };
 
 inline ControlUsers global_users;
